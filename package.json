@@ -1,0 +1,33 @@
+{
+  "name": "@agentstash/mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Agent Stash — shared memory for Claude Code, Cursor, and Codex",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "agentstash-mcp": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test src/index.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "cursor",
+    "codex",
+    "memory",
+    "agent-stash"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mrusert/stash-mcp.git"
+  }
+}
