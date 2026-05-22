@@ -25,6 +25,10 @@
     "memory",
     "agent-stash"
   ],
+  "files": [
+    "src/",
+    "README.md"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
