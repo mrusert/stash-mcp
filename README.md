@@ -4,13 +4,27 @@ Shared memory for Claude Code, Cursor, and Codex. Decisions, progress, and conte
 
 ## Setup
 
-**1. Get an API key** at [agentstash.ai](https://agentstash.ai) (free tier available), or register headlessly:
+**1. Get an API key.**
+
+Sign in with GitHub at [agentstash.ai](https://agentstash.ai), or register headlessly:
 
 ```bash
 curl -X POST https://agentstash.ai/register/agent \
   -H 'Content-Type: application/json' \
   -d '{"agent_name": "my-project"}'
 ```
+
+The response includes your API key and a `claim_url`:
+
+```json
+{
+  "api_key": "sk_...",
+  "claim_url": "https://agentstash.ai/auth/claim/...",
+  ...
+}
+```
+
+Save the `api_key` — it won't be shown again. The `claim_url` is a one-time link to connect a GitHub account to this key. Open it in a browser whenever you want to enable upgrades. Your API key and all stored memory carry over automatically.
 
 **2. Add to your tool's MCP config.**
 
