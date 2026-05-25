@@ -108,21 +108,94 @@ async function apiDelete(path) {
 
 // ── Log (stream) management ────────────────────────────────────────────────
 // Cached per process — the log is created once and reused.
+// Logs are ephemeral by design: TTL is tier-capped (free: 24h, PRO: 7d, enterprise: 30d).
+// renew_on_access extends the log's life during active sessions.
+// Near expiry the log is distilled into the project's persistent progress memory.
+
+const LOG_EXPIRY_ACTION = (process.env.AGENT_STASH_LOG_EXPIRY_ACTION || "notify").toLowerCase();
+const LOG_DISTILLATION_THRESHOLD = 3600; // trigger distillation when < 1h remaining
+const REQUESTED_LOG_TTL = parseInt(process.env.AGENT_STASH_LOG_TTL || "604800", 10); // user override; server clamps to tier max
 
 let _logId = null;
+let _logTtl = null;         // actual TTL returned by server (clamped to tier)
+let _distillationDone = false;
 
 async function getOrCreateLog(projectSlug) {
   if (_logId) return _logId;
 
   const result = await apiPost("/log", {
     name: `${projectSlug}-log`,
-    ttl: 604800, // 7 days
+    ttl: REQUESTED_LOG_TTL,
     renew_on_access: true,
     create_if_missing: true,
     discoverable: false,
+    linked_stash: `${projectSlug}-progress`,
   });
   _logId = result.stream_id;
+  _logTtl = result.ttl;
   return _logId;
+}
+
+async function apiPatch(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PATCH",
+    headers: TEXT_HEADERS,
+    body: typeof body === "string" ? body : JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function maybeDistillLog(ttlRemaining, projectSlug) {
+  if (_distillationDone) return null;
+  if (ttlRemaining === undefined || ttlRemaining > LOG_DISTILLATION_THRESHOLD) return null;
+
+  _distillationDone = true;
+
+  try {
+    if (!_logId) return null;
+    const logData = await apiGet(`/log/${_logId}?limit=200`);
+    const entries = logData?.entries || [];
+    if (entries.length === 0) return null;
+
+    const summary = entries.map(e => {
+      const ts = e.data?.timestamp || e.created_at || "";
+      const ev = e.data?.event || "(event)";
+      const det = e.data?.details ? ` — ${JSON.stringify(e.data.details)}` : "";
+      return `[${ts}] ${ev}${det}`;
+    }).join("\n");
+
+    const progressKey = `${projectSlug}-progress`;
+    const progressEnc = encodeURIComponent(progressKey);
+    const existing = await apiGet(`/memory/${progressEnc}?persistent=true`);
+
+    if (existing !== null) {
+      await apiPatch(
+        `/memory/${progressEnc}/append?persistent=true`,
+        `\n\n--- Log distilled before expiry ---\n${summary}`
+      );
+      return { distilled: true };
+    }
+
+    // No existing progress memory — follow LOG_EXPIRY_ACTION
+    if (LOG_EXPIRY_ACTION === "auto_summarize") {
+      try {
+        await apiPut(`/memory/${progressEnc}?persistent=true`, summary);
+        return { distilled: true, action: "auto_summarize" };
+      } catch {
+        // Likely at persistent stash cap — fall through to notify
+      }
+    } else if (LOG_EXPIRY_ACTION === "drop") {
+      return null;
+    }
+    // Default: notify
+    return {
+      notice: `Project log for '${projectSlug}' expires in < 1 hour. ` +
+              `Use save_progress() to preserve context, or upgrade at https://agentstash.ai/pricing-plans`,
+    };
+  } catch {
+    return null; // never let distillation crash the main call
+  }
 }
 
 // ── Tool implementations ───────────────────────────────────────────────────
@@ -190,7 +263,10 @@ async function logEvent(event, details) {
   const logId = await getOrCreateLog(project);
   const entry = { event, details: details || null, timestamp: new Date().toISOString() };
   const result = await apiPost(`/log/${logId}`, { data: entry, label: "event" });
-  return { logged: true, entry_id: result.entry_id };
+  const response = { logged: true, entry_id: result.entry_id, ttl_remaining: result.ttl_remaining };
+  const distillation = await maybeDistillLog(result.ttl_remaining, project);
+  if (distillation) response.distillation = distillation;
+  return response;
 }
 
 async function readLog(limit) {
@@ -198,6 +274,8 @@ async function readLog(limit) {
   const logId = await getOrCreateLog(project);
   const result = await apiGet(`/log/${logId}?limit=${limit || 50}`);
   if (!result) return [];
+  // Trigger distillation silently if log is near expiry (doesn't affect return value)
+  maybeDistillLog(result.ttl_remaining, project).catch(() => {});
   return (result.entries || []).map(e => ({
     entry_id: e.entry_id,
     event: e.data?.event,
@@ -321,8 +399,12 @@ const TOOLS = [
   {
     name: "log_event",
     description:
-      "Append an event to the project's audit log. " +
-      "Use to record significant actions so future sessions can see what happened. " +
+      "Append an event to the project's working history log. " +
+      "The log is temporary and tier-capped (free: 24h, PRO: 7d, enterprise: 30d); " +
+      "renew_on_access extends it during active sessions. " +
+      "Near expiry the server distills the log into the project's durable progress memory. " +
+      "For decisions that must survive across sessions, use remember() instead. " +
+      "Response includes ttl_remaining so you can see the active ceiling. " +
       "Example: log_event('migration_complete', {duration_s: 47, tables: ['users', 'posts']})",
     inputSchema: {
       type: "object",
@@ -339,8 +421,9 @@ const TOOLS = [
   {
     name: "read_log",
     description:
-      "Read recent events from the project's audit log. " +
-      "Use to see what happened in prior sessions or what teammates' agents did. " +
+      "Read recent events from the project's working history log. " +
+      "The log is temporary and tier-capped (free: 24h, PRO: 7d, enterprise: 30d). " +
+      "If the log is empty it may have expired — rely on resume_progress() and recall() for durable context. " +
       "Example: read_log(20) → [{event: 'migration_complete', timestamp: '...'}]",
     inputSchema: {
       type: "object",
