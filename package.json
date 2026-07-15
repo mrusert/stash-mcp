@@ -1,15 +1,17 @@
 {
   "name": "@agentstash/mcp",
-  "version": "0.1.1",
-  "description": "MCP server for Agent Stash — shared memory for Claude Code, Cursor, and Codex",
+  "version": "0.2.0",
+  "description": "MCP server + install CLI for Agent Stash — shared memory for Claude Code, Cursor, and Codex",
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "agentstash-mcp": "src/index.js"
+    "agentstash-mcp": "src/bin.js",
+    "agentstash": "src/cli.js"
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test src/index.test.js"
+    "cli": "node src/cli.js",
+    "test": "node --test src/cli.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
@@ -23,7 +25,8 @@
     "cursor",
     "codex",
     "memory",
-    "agent-stash"
+    "agent-stash",
+    "cli"
   ],
   "files": [
     "src/",

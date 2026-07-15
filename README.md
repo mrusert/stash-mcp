@@ -2,53 +2,41 @@
 
 Shared memory for Claude Code, Cursor, and Codex. Decisions, progress, and context persist across sessions, machines, and tool switches.
 
-## Setup
-
-**1. Get an API key.**
-
-Sign in with GitHub at [agentstash.ai](https://agentstash.ai), or register headlessly:
+## Install (one command)
 
 ```bash
-curl -X POST https://agentstash.ai/register/agent \
-  -H 'Content-Type: application/json' \
-  -d '{"agent_name": "my-project"}'
+# Register a free key and configure Claude Code + Cursor
+npx @agentstash/mcp init --register --agent-name my-laptop
+
+# Or use an existing key from https://agentstash.ai
+npx @agentstash/mcp init --api-key sk_your_key_here
 ```
 
-The response includes your API key and a `claim_url`:
+Then **restart** Claude Code / Cursor so MCP reloads.
 
-```json
-{
-  "api_key": "sk_...",
-  "claim_url": "https://agentstash.ai/auth/claim/...",
-  ...
-}
+Check setup:
+
+```bash
+npx @agentstash/mcp doctor
 ```
 
-Save the `api_key` — it won't be shown again. The `claim_url` is a one-time link to connect a GitHub account to this key. Open it in a browser whenever you want to enable upgrades. Your API key and all stored memory carry over automatically.
+Remove:
 
-**2. Add to your tool's MCP config.**
-
-### Claude Code
-
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "agent-stash": {
-      "command": "npx",
-      "args": ["-y", "@agentstash/mcp"],
-      "env": {
-        "AGENT_STASH_API_KEY": "sk_your_key_here"
-      }
-    }
-  }
-}
+```bash
+npx @agentstash/mcp uninstall
 ```
 
-### Cursor
+### What `init` does
 
-Add to `~/.cursor/mcp.json`:
+1. Obtains or saves your API key (`~/.agentstash/config.json`, mode `0600`)
+2. Adds the Agent Stash MCP server to Claude Code (via `claude mcp add` when available, otherwise `~/.claude/settings.json`) and/or Cursor (`~/.cursor/mcp.json`)
+3. Installs a small Claude continuity skill (`~/.claude/skills/agent-stash/`) so agents are guided to `resume_progress` / `save_progress`
+
+Flags: `--claude`, `--cursor`, `--all`, `--force`, `--no-skill`, `--api-url`, `--project`.
+
+### Manual config (if you prefer)
+
+#### Claude Code
 
 ```json
 {
@@ -63,6 +51,12 @@ Add to `~/.cursor/mcp.json`:
   }
 }
 ```
+
+Or: `claude mcp add -s user agent-stash -e AGENT_STASH_API_KEY=sk_... -- npx -y @agentstash/mcp`
+
+#### Cursor
+
+Add the same `mcpServers` block to `~/.cursor/mcp.json`.
 
 Memory is scoped to your current git project automatically (detected from `git remote.origin.url`). Override with `AGENT_STASH_PROJECT` if needed.
 
@@ -84,9 +78,24 @@ Memory is scoped to your current git project automatically (detected from `git r
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `AGENT_STASH_API_KEY` | Yes | API key from agentstash.ai |
+| `AGENT_STASH_API_KEY` | Yes (for MCP server) | API key from agentstash.ai |
 | `AGENT_STASH_PROJECT` | No | Override project namespace (default: git repo name) |
 | `AGENT_STASH_URL` | No | Override API URL (default: https://agentstash.ai) |
+
+## CLI vs MCP server
+
+| Command | Role |
+|---------|------|
+| `npx @agentstash/mcp` (no args) | Starts the **MCP server** (stdio) — what Claude/Cursor launch |
+| `npx @agentstash/mcp init \| doctor \| uninstall` | **Install CLI** for humans |
+| `agentstash …` | Same CLI (if package bins are on PATH) |
+
+## Development
+
+```bash
+npm test
+node src/cli.js help
+```
 
 ## License
 
