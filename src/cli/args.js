@@ -35,6 +35,8 @@ export function parseArgs(argv) {
           "cursor",
           "all",
           "no-skill",
+          "no-hooks",
+          "hooks",
           "register",
           "help",
           "version",
@@ -74,10 +76,11 @@ Usage:
   npx @agentstash/mcp <command> [options]
 
 Commands:
-  init         Configure MCP + optional continuity skill
-  doctor       Check API key, connectivity, and install status
-  uninstall    Remove Agent Stash MCP entries (and skill)
-  help         Show this help
+  init            Configure MCP, skill, and SessionStart auto-resume hook
+  doctor          Check API key, connectivity, and install status
+  uninstall       Remove Agent Stash MCP entries, skill, and hooks
+  session-start   Print prior progress brief (used by SessionStart hook)
+  help            Show this help
 
 init options:
   --api-key <sk_...>     API key (or AGENT_STASH_API_KEY / saved config)
@@ -87,10 +90,12 @@ init options:
   --claude               Claude Code only
   --cursor               Cursor only
   --all                  Claude Code + Cursor (also the default)
-  --force                Replace existing Agent Stash MCP entry
+  --force                Replace existing Agent Stash MCP entry / hook
   --no-skill             Skip installing the Claude continuity skill
+  --no-hooks             Skip SessionStart auto-resume hook (Claude only)
+  --hooks                Force install hooks (default on for Claude)
   --project <slug>       Set AGENT_STASH_PROJECT in MCP env
-  --yes                  Non-interactive (required with --register if no TTY prompts)
+  --yes                  Non-interactive
 
 doctor options:
   --api-key, --api-url   Same as init

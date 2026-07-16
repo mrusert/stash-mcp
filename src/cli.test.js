@@ -21,6 +21,17 @@ import { parseArgs } from "./cli/args.js";
 import { resolveTargets } from "./cli/init.js";
 import { slugify, getProjectSlug } from "./cli/project.js";
 import { registerAgent, verifyApiKey } from "./cli/register.js";
+import {
+  formatSessionBrief,
+  parseHookStdin,
+  buildSessionStartOutput,
+} from "./cli/session-brief.js";
+import {
+  isOurHookCommand,
+  installSessionStartHook,
+  uninstallSessionStartHook,
+  sessionStartHookCommand,
+} from "./cli/hooks.js";
 
 describe("parseArgs", () => {
   it("parses command and long flags", () => {
@@ -240,5 +251,138 @@ describe("buildMcpServerBlock", () => {
     assert.equal(b.env.AGENT_STASH_API_KEY, "sk_x");
     assert.equal(b.env.AGENT_STASH_URL, "http://localhost:8000");
     assert.equal(b.env.AGENT_STASH_PROJECT, "demo");
+  });
+});
+
+describe("session-brief", () => {
+  it("formatSessionBrief handles empty progress", () => {
+    const t = formatSessionBrief({ project: "demo", snapshot: null });
+    assert.match(t, /No saved progress/);
+    assert.match(t, /demo/);
+  });
+
+  it("formatSessionBrief formats snapshot", () => {
+    const t = formatSessionBrief({
+      project: "demo",
+      snapshot: {
+        task: "Migrate auth",
+        next_step: "Update middleware",
+        completed_steps: ["login"],
+        decisions: ["cookies"],
+        files_touched: ["a.py"],
+        saved_at: "2026-01-01T00:00:00Z",
+      },
+    });
+    assert.match(t, /Migrate auth/);
+    assert.match(t, /Update middleware/);
+    assert.match(t, /cookies/);
+  });
+
+  it("parseHookStdin reads cwd", () => {
+    const r = parseHookStdin(JSON.stringify({ cwd: "/tmp/proj" }));
+    assert.equal(r.cwd, "/tmp/proj");
+  });
+
+  it("buildSessionStartOutput formats fetch result", async () => {
+    const fetchImpl = async () => ({
+      status: 200,
+      ok: true,
+      async text() {
+        return JSON.stringify({
+          task: "T",
+          next_step: "N",
+          completed_steps: [],
+          decisions: [],
+          files_touched: [],
+          saved_at: "t",
+        });
+      },
+    });
+    const r = await buildSessionStartOutput({
+      project: "demo",
+      apiKey: "sk_test",
+      apiUrl: "https://example.com",
+      fetchImpl,
+    });
+    assert.match(r.text, /Task:\*\* T|Task:.*T/);
+    assert.equal(r.hasProgress, true);
+  });
+
+  it("buildSessionStartOutput handles 404", async () => {
+    const fetchImpl = async () => ({
+      status: 404,
+      ok: false,
+      async text() {
+        return "missing";
+      },
+    });
+    const r = await buildSessionStartOutput({
+      project: "demo",
+      apiKey: "sk_test",
+      apiUrl: "https://example.com",
+      fetchImpl,
+    });
+    assert.match(r.text, /No saved progress/);
+    assert.equal(r.hasProgress, false);
+  });
+});
+
+describe("hooks merge", () => {
+  it("recognizes our hook command", () => {
+    assert.equal(
+      isOurHookCommand(sessionStartHookCommand("/tmp/session-start.mjs")),
+      true
+    );
+    assert.equal(isOurHookCommand("echo hello"), false);
+  });
+
+  it("install and uninstall SessionStart without clobbering others", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentstash-hooks-"));
+    const settingsPath = path.join(dir, "settings.json");
+    const scriptPath = path.join(dir, "session-start.mjs");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        model: "sonnet",
+        hooks: {
+          SessionStart: [
+            {
+              hooks: [{ type: "command", command: "echo other-hook" }],
+            },
+          ],
+        },
+      }),
+      "utf8"
+    );
+
+    // write script manually so installSessionStartScript isn't required
+    fs.writeFileSync(scriptPath, "#!/usr/bin/env node\nconsole.log('ok')\n");
+
+    const r = installSessionStartHook({
+      force: true,
+      settingsPath,
+      scriptPath,
+    });
+    assert.equal(r.ok, true);
+    const after = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    const cmds = after.hooks.SessionStart.flatMap((g) =>
+      (g.hooks || []).map((h) => h.command)
+    );
+    assert.ok(cmds.some((c) => c.includes("echo other-hook")));
+    assert.ok(cmds.some((c) => isOurHookCommand(c)));
+
+    const u = uninstallSessionStartHook({
+      settingsPath,
+      removeScript: false,
+    });
+    assert.equal(u.removed, true);
+    const final = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    const cmds2 = (final.hooks?.SessionStart || []).flatMap((g) =>
+      (g.hooks || []).map((h) => h.command)
+    );
+    assert.ok(cmds2.some((c) => c.includes("echo other-hook")));
+    assert.ok(!cmds2.some((c) => isOurHookCommand(c)));
+
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

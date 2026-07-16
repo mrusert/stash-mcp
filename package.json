@@ -1,7 +1,7 @@
 {
   "name": "@agentstash/mcp",
-  "version": "0.2.2",
-  "description": "MCP server + install CLI for Agent Stash — shared memory for Claude Code, Cursor, and Codex",
+  "version": "0.3.0",
+  "description": "MCP server + install CLI for Agent Stash — shared memory and SessionStart auto-resume for Claude Code, Cursor, and Codex",
   "type": "module",
   "main": "src/index.js",
   "bin": {

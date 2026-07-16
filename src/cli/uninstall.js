@@ -4,6 +4,7 @@
 
 import { uninstallClaudeMcp, uninstallSkill } from "./targets/claude.js";
 import { uninstallCursorMcp } from "./targets/cursor.js";
+import { uninstallSessionStartHook } from "./hooks.js";
 
 /**
  * @param {{ flags: Record<string, string|boolean> }} opts
@@ -31,6 +32,15 @@ export async function runUninstall(opts) {
       const s = uninstallSkill();
       if (s.removed) console.log(`✓ Skill removed: ${s.removed}`);
       else console.log("· Skill: not present");
+    }
+    if (!flags["keep-hooks"]) {
+      const h = uninstallSessionStartHook();
+      if (h.error) console.log(`✗ Hooks: ${h.error}`);
+      else if (h.removed || h.scriptRemoved) {
+        console.log(
+          `✓ SessionStart hook removed${h.scriptRemoved ? " (+ launcher)" : ""}`
+        );
+      } else console.log("· SessionStart hook: not present");
     }
   }
 

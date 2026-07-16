@@ -9,15 +9,21 @@ Shared memory for Claude Code, Cursor, and Codex. Decisions, progress, and conte
 npx @agentstash/mcp init --register --agent-name my-laptop
 
 # Or use an existing key from https://agentstash.ai
-npx @agentstash/mcp init --api-key sk_your_key_here
+npx @agentstash/mcp init --api-key sk_your_key_here --claude --force
 ```
 
-Then **restart** Claude Code / Cursor so MCP reloads.
+Then **restart** Claude Code / Cursor so MCP and hooks reload.
 
 Check setup:
 
 ```bash
 npx @agentstash/mcp doctor
+```
+
+Test auto-resume brief (what SessionStart injects):
+
+```bash
+npx @agentstash/mcp session-start
 ```
 
 Remove:
@@ -29,10 +35,22 @@ npx @agentstash/mcp uninstall
 ### What `init` does
 
 1. Obtains or saves your API key (`~/.agentstash/config.json`, mode `0600`)
-2. Adds the Agent Stash MCP server to Claude Code (via `claude mcp add` when available, otherwise `~/.claude/settings.json`) and/or Cursor (`~/.cursor/mcp.json`)
-3. Installs a small Claude continuity skill (`~/.claude/skills/agent-stash/`) so agents are guided to `resume_progress` / `save_progress`
+2. Adds the Agent Stash MCP server to Claude Code and/or Cursor
+3. Installs a Claude continuity skill (`~/.claude/skills/agent-stash/`)
+4. **Installs a Claude Code SessionStart hook** that loads prior project progress into context automatically (skip with `--no-hooks`)
 
-Flags: `--claude`, `--cursor`, `--all`, `--force`, `--no-skill`, `--api-url`, `--project`.
+### Auto-resume (SessionStart hook)
+
+On each new Claude Code session, a hook runs:
+
+```text
+GET /memory/{project}-progress?persistent=true
+→ injects a short “prior session” brief into context
+```
+
+You do **not** need to ask the model to call `resume_progress()` for that first load. Mid-session saves still use `save_progress` (skill guidance).
+
+Flags: `--claude`, `--cursor`, `--all`, `--force`, `--no-skill`, `--no-hooks`, `--api-url`, `--project`.
 
 ### Manual config (if you prefer)
 
@@ -87,18 +105,17 @@ Memory is scoped to your current git project automatically (detected from `git r
 | Command | Role |
 |---------|------|
 | `npx @agentstash/mcp` (no args) | Starts the **MCP server** (stdio) — what Claude/Cursor launch |
-| `npx @agentstash/mcp init \| doctor \| uninstall` | **Install CLI** for humans |
+| `npx @agentstash/mcp init \| doctor \| uninstall \| session-start` | **Install / continuity CLI** |
 | `agentstash …` | Same CLI (if package bins are on PATH) |
 
-> **Note:** The package exposes a bin named `mcp` so `npx @agentstash/mcp` works.  
-> If an older 0.2.0 install fails with “could not determine executable”, use  
-> `npx -y -p @agentstash/mcp agentstash init …` or upgrade to **≥ 0.2.1**.
+> The package exposes a bin named `mcp` so `npx @agentstash/mcp` works.
 
 ## Development
 
 ```bash
 npm test
 node src/cli.js help
+node src/cli.js session-start --project demo --api-key sk_...
 ```
 
 ## License

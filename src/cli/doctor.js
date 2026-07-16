@@ -13,6 +13,7 @@ import { getProjectSlug } from "./project.js";
 import { detectClaudeMcp, detectSkill, hasClaudeCli } from "./targets/claude.js";
 import { detectCursorMcp, cursorMcpPath } from "./targets/cursor.js";
 import { claudeSettingsPath } from "./targets/claude.js";
+import { detectSessionStartHook } from "./hooks.js";
 
 /**
  * @param {{ flags: Record<string, string|boolean> }} opts
@@ -77,6 +78,16 @@ export async function runDoctor(opts) {
     console.log(`✓ Continuity skill: ${skill.path}`);
   } else {
     console.log("· Continuity skill: not installed (optional)");
+  }
+  const hook = detectSessionStartHook();
+  if (hook.present) {
+    console.log(
+      `✓ SessionStart hook: installed${hook.script ? " (launcher present)" : " (launcher missing)"}`
+    );
+  } else {
+    console.log(
+      "· SessionStart hook: not installed — run init without --no-hooks for auto-resume"
+    );
   }
 
   // Cursor

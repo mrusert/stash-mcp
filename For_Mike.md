@@ -12,7 +12,7 @@ It has **two entrypoints**:
 ## Why the CLI exists
 
 Users should not hand-edit `~/.claude/settings.json` or invent continuity habits.  
-`init` writes MCP config + a thin Claude skill. Hard SessionStart/Stop **hooks** are still a later plugin — this ships the install path and soft continuity guidance.
+`init` writes MCP config + a thin Claude skill + a **SessionStart hook** that auto-injects prior progress (HTTP GET of `{project}-progress`). Mid-session `save_progress` stays skill/judgment-based.
 
 ## Mapping MCP tools → API
 
@@ -35,8 +35,12 @@ Project slug = git remote repo name (or cwd / `AGENT_STASH_PROJECT`).
 | `src/cli/targets/claude.js` | `claude mcp add` + settings.json + skill |
 | `src/cli/targets/cursor.js` | `~/.cursor/mcp.json` |
 | `src/cli/skill-template.md` | Continuity skill body |
+| `src/cli/session-brief.js` | Fetch + format progress brief |
+| `src/cli/hooks.js` | SessionStart hook install/uninstall |
+| `src/cli/run-session-start.js` | `session-start` CLI command |
 
-User key store: `~/.agentstash/config.json` (0600).
+User key store: `~/.agentstash/config.json` (0600).  
+Hook launcher: `~/.agentstash/bin/session-start.mjs` → `npx @agentstash/mcp session-start`.
 
 ## Publish
 

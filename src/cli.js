@@ -8,6 +8,7 @@ import { parseArgs, printHelp } from "./cli/args.js";
 import { runInit } from "./cli/init.js";
 import { runDoctor } from "./cli/doctor.js";
 import { runUninstall } from "./cli/uninstall.js";
+import { runSessionStart } from "./cli/run-session-start.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -31,6 +32,8 @@ try {
     await runDoctor({ flags });
   } else if (command === "uninstall") {
     await runUninstall({ flags });
+  } else if (command === "session-start") {
+    await runSessionStart({ flags });
   } else {
     console.error(`Unknown command: ${command}\n`);
     printHelp();

@@ -10,6 +10,7 @@ const CLI_COMMANDS = new Set([
   "init",
   "doctor",
   "uninstall",
+  "session-start",
   "help",
   "--help",
   "-h",
