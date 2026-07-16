@@ -1,60 +1,58 @@
 # @agentstash/mcp
 
-Shared memory for Claude Code, Cursor, and Codex. Decisions, progress, and context persist across sessions, machines, and tool switches.
+Shared memory for Claude Code, Cursor, Codex, and (soon) OpenCode. Decisions and progress persist across sessions and tools.
 
 ## Install (one command)
 
 ```bash
-# Register a free key and configure Claude Code + Cursor
-npx @agentstash/mcp init --register --agent-name my-laptop
-
-# Or use an existing key from https://agentstash.ai
 npx @agentstash/mcp init --api-key sk_your_key_here --claude --force
+# or register a free key:
+npx @agentstash/mcp init --register --agent-name my-laptop --claude
 ```
 
-Then **restart** Claude Code / Cursor so MCP and hooks reload.
-
-Check setup:
+**Restart Claude Code** after init.
 
 ```bash
 npx @agentstash/mcp doctor
 ```
 
-Test auto-resume brief (what SessionStart injects):
+## What `init` installs (Claude Code)
 
-```bash
-npx @agentstash/mcp session-start
-```
+| Piece | Purpose |
+|-------|---------|
+| MCP server | Tools: `remember`, `save_progress`, `resume_progress`, … |
+| Continuity skill | Soft guidance for mid-session saves |
+| **SessionStart** hook | Inject prior `{project}-progress` into context |
+| **PreCompact** hook | Merge-save progress before context compaction |
+| **SessionEnd** hook | Merge-save progress on clean exit |
+| **PostToolUse** (Bash) | If command is `git commit`, append a log event |
 
-Remove:
+Hooks call the **HTTP API** via CLI (`session-start`, `checkpoint`, `log-commit`). They never call MCP tools directly.
 
-```bash
-npx @agentstash/mcp uninstall
-```
+Skip hooks: `--no-hooks`. Replace: `--force`.
 
-### What `init` does
-
-1. Obtains or saves your API key (`~/.agentstash/config.json`, mode `0600`)
-2. Adds the Agent Stash MCP server to Claude Code and/or Cursor
-3. Installs a Claude continuity skill (`~/.claude/skills/agent-stash/`)
-4. **Installs a Claude Code SessionStart hook** that loads prior project progress into context automatically (skip with `--no-hooks`)
-
-### Auto-resume (SessionStart hook)
-
-On each new Claude Code session, a hook runs:
+## Continuity model
 
 ```text
-GET /memory/{project}-progress?persistent=true
-→ injects a short “prior session” brief into context
+Agent (skill/MCP)  → rich save_progress / remember   (judgment)
+Hooks              → guaranteed checkpoints + commit log
+Crash / kill -9    → no hook; prior checkpoints bound the loss
 ```
 
-You do **not** need to ask the model to call `resume_progress()` for that first load. Mid-session saves still use `save_progress` (skill guidance).
+OpenCode & Codex adapters: see [ROADMAP.md](./ROADMAP.md). CLI actions are harness-agnostic.
 
-Flags: `--claude`, `--cursor`, `--all`, `--force`, `--no-skill`, `--no-hooks`, `--api-url`, `--project`.
+## CLI commands
 
-### Manual config (if you prefer)
+| Command | Role |
+|---------|------|
+| `init` | Install MCP + skill + hooks |
+| `doctor` | Health check |
+| `uninstall` | Remove MCP + skill + hooks |
+| `session-start` | Print progress brief (SessionStart) |
+| `checkpoint <reason>` | Merge-save progress (`pre_compact`, `session_end`, …) |
+| `log-commit` | Log git commit if stdin/tool payload matches |
 
-#### Claude Code
+## Manual MCP config
 
 ```json
 {
@@ -62,60 +60,34 @@ Flags: `--claude`, `--cursor`, `--all`, `--force`, `--no-skill`, `--no-hooks`, `
     "agent-stash": {
       "command": "npx",
       "args": ["-y", "@agentstash/mcp"],
-      "env": {
-        "AGENT_STASH_API_KEY": "sk_your_key_here"
-      }
+      "env": { "AGENT_STASH_API_KEY": "sk_..." }
     }
   }
 }
 ```
 
-Or: `claude mcp add -s user agent-stash -e AGENT_STASH_API_KEY=sk_... -- npx -y @agentstash/mcp`
-
-#### Cursor
-
-Add the same `mcpServers` block to `~/.cursor/mcp.json`.
-
-Memory is scoped to your current git project automatically (detected from `git remote.origin.url`). Override with `AGENT_STASH_PROJECT` if needed.
-
 ## Tools
 
 | Tool | When to use |
 |------|-------------|
-| `remember(key, value)` | After a meaningful decision or architectural choice |
-| `recall(key)` | At session start to load prior context |
-| `list_memories(prefix?)` | To discover what's stored in this project |
-| `forget(key)` | To remove a stale memory |
-| `save_progress(task, completed_steps, next_step, decisions, files_touched)` | Before risky work or when context is filling up |
-| `resume_progress()` | At session start when continuing prior work |
-| `log_event(event, details?)` | To record significant actions for the audit trail |
-| `read_log(limit?)` | To see what happened in prior sessions |
-| `find_memory(query)` | To search memories by key name |
+| `remember` / `recall` | Long-lived decisions |
+| `save_progress` / `resume_progress` | Task snapshot (rich, agent-written) |
+| `log_event` / `read_log` | Audit trail |
+| `list_memories` / `find_memory` / `forget` | Key management |
 
-## Environment variables
+## Environment
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `AGENT_STASH_API_KEY` | Yes (for MCP server) | API key from agentstash.ai |
-| `AGENT_STASH_PROJECT` | No | Override project namespace (default: git repo name) |
-| `AGENT_STASH_URL` | No | Override API URL (default: https://agentstash.ai) |
-
-## CLI vs MCP server
-
-| Command | Role |
-|---------|------|
-| `npx @agentstash/mcp` (no args) | Starts the **MCP server** (stdio) — what Claude/Cursor launch |
-| `npx @agentstash/mcp init \| doctor \| uninstall \| session-start` | **Install / continuity CLI** |
-| `agentstash …` | Same CLI (if package bins are on PATH) |
-
-> The package exposes a bin named `mcp` so `npx @agentstash/mcp` works.
+| Variable | Description |
+|----------|-------------|
+| `AGENT_STASH_API_KEY` | Required for MCP server |
+| `AGENT_STASH_PROJECT` | Override project slug |
+| `AGENT_STASH_URL` | Default `https://agentstash.ai` |
 
 ## Development
 
 ```bash
 npm test
 node src/cli.js help
-node src/cli.js session-start --project demo --api-key sk_...
 ```
 
 ## License

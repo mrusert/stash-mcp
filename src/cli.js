@@ -9,11 +9,13 @@ import { runInit } from "./cli/init.js";
 import { runDoctor } from "./cli/doctor.js";
 import { runUninstall } from "./cli/uninstall.js";
 import { runSessionStart } from "./cli/run-session-start.js";
+import { runCheckpointCli } from "./cli/run-checkpoint.js";
+import { runLogCommitCli } from "./cli/run-log-commit.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
 
-const { command, flags } = parseArgs(process.argv.slice(2));
+const { command, flags, positionals } = parseArgs(process.argv.slice(2));
 
 if (flags.version || command === "--version" || command === "-V") {
   console.log(version);
@@ -34,6 +36,10 @@ try {
     await runUninstall({ flags });
   } else if (command === "session-start") {
     await runSessionStart({ flags });
+  } else if (command === "checkpoint") {
+    await runCheckpointCli({ flags, positionals });
+  } else if (command === "log-commit") {
+    await runLogCommitCli({ flags });
   } else {
     console.error(`Unknown command: ${command}\n`);
     printHelp();

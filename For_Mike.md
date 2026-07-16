@@ -12,7 +12,14 @@ It has **two entrypoints**:
 ## Why the CLI exists
 
 Users should not hand-edit `~/.claude/settings.json` or invent continuity habits.  
-`init` writes MCP config + a thin Claude skill + a **SessionStart hook** that auto-injects prior progress (HTTP GET of `{project}-progress`). Mid-session `save_progress` stays skill/judgment-based.
+`init` writes MCP config + skill + **Claude continuity hooks**:
+
+- SessionStart → inject progress brief  
+- PreCompact / SessionEnd → merge-save checkpoint (preserves agent fields)  
+- PostToolUse(Bash) → log git commits  
+
+Mid-session rich `save_progress` stays skill/judgment-based.  
+OpenCode/Codex: same CLI actions later; see `ROADMAP.md`.
 
 ## Mapping MCP tools → API
 
@@ -36,11 +43,14 @@ Project slug = git remote repo name (or cwd / `AGENT_STASH_PROJECT`).
 | `src/cli/targets/cursor.js` | `~/.cursor/mcp.json` |
 | `src/cli/skill-template.md` | Continuity skill body |
 | `src/cli/session-brief.js` | Fetch + format progress brief |
-| `src/cli/hooks.js` | SessionStart hook install/uninstall |
-| `src/cli/run-session-start.js` | `session-start` CLI command |
+| `src/cli/checkpoint.js` | Merge-save progress |
+| `src/cli/log-commit.js` | Detect/log git commits |
+| `src/cli/hooks.js` | Install all Claude Code continuity hooks |
+| `src/cli/run-*.js` | CLI entry for session-start / checkpoint / log-commit |
+| `ROADMAP.md` | OpenCode + Codex adapter plan |
 
 User key store: `~/.agentstash/config.json` (0600).  
-Hook launcher: `~/.agentstash/bin/session-start.mjs` → `npx @agentstash/mcp session-start`.
+Hook runner: `~/.agentstash/bin/hook-runner.mjs` → `npx @agentstash/mcp <cmd>`.
 
 ## Publish
 

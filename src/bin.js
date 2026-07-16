@@ -11,6 +11,8 @@ const CLI_COMMANDS = new Set([
   "doctor",
   "uninstall",
   "session-start",
+  "checkpoint",
+  "log-commit",
   "help",
   "--help",
   "-h",

@@ -76,10 +76,12 @@ Usage:
   npx @agentstash/mcp <command> [options]
 
 Commands:
-  init            Configure MCP, skill, and SessionStart auto-resume hook
+  init            Configure MCP, skill, and continuity hooks (Claude Code)
   doctor          Check API key, connectivity, and install status
   uninstall       Remove Agent Stash MCP entries, skill, and hooks
-  session-start   Print prior progress brief (used by SessionStart hook)
+  session-start   Print prior progress brief (SessionStart hook)
+  checkpoint      Merge-save progress (PreCompact / SessionEnd hooks)
+  log-commit      Log a git commit event (PostToolUse hook)
   help            Show this help
 
 init options:
@@ -92,8 +94,11 @@ init options:
   --all                  Claude Code + Cursor (also the default)
   --force                Replace existing Agent Stash MCP entry / hook
   --no-skill             Skip installing the Claude continuity skill
-  --no-hooks             Skip SessionStart auto-resume hook (Claude only)
-  --hooks                Force install hooks (default on for Claude)
+  --no-hooks             Skip all continuity hooks (Claude only)
+  --hooks                Install hooks (default on for Claude)
+
+  Continuity hooks (Claude Code): SessionStart, PreCompact, SessionEnd,
+  PostToolUse(Bash→git commit). OpenCode/Codex: see ROADMAP.md.
   --project <slug>       Set AGENT_STASH_PROJECT in MCP env
   --yes                  Non-interactive
 

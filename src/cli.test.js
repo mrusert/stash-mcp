@@ -386,3 +386,142 @@ describe("hooks merge", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
+
+import { mergeProgressSnapshot } from "./cli/checkpoint.js";
+import {
+  detectGitCommit,
+  extractBashCommand,
+  parseToolHookStdin,
+} from "./cli/log-commit.js";
+import {
+  installClaudeHooks,
+  uninstallClaudeHooks,
+  isOurHookCommand as isHook,
+  ourHookSpecs,
+} from "./cli/hooks.js";
+
+describe("mergeProgressSnapshot", () => {
+  it("preserves agent fields and stamps checkpoint", () => {
+    const m = mergeProgressSnapshot(
+      {
+        task: "Auth work",
+        next_step: "middleware",
+        completed_steps: ["login"],
+        decisions: ["cookies"],
+        files_touched: ["a.py"],
+      },
+      "pre_compact"
+    );
+    assert.equal(m.task, "Auth work");
+    assert.equal(m.next_step, "middleware");
+    assert.equal(m.checkpoint_reason, "pre_compact");
+    assert.ok(m.saved_at);
+    assert.equal(m.auto_checkpoints.length, 1);
+  });
+
+  it("creates stub when empty", () => {
+    const m = mergeProgressSnapshot(null, "session_end");
+    assert.match(m.task, /auto checkpoint/i);
+    assert.equal(m.checkpoint_reason, "session_end");
+  });
+});
+
+describe("log-commit detection", () => {
+  it("detects git commit -m", () => {
+    const d = detectGitCommit('git commit -m "fix: foo"');
+    assert.equal(d.isCommit, true);
+    assert.equal(d.message, "fix: foo");
+  });
+
+  it("ignores non-commit git", () => {
+    assert.equal(detectGitCommit("git status").isCommit, false);
+  });
+
+  it("extracts command from tool input", () => {
+    assert.equal(
+      extractBashCommand({ command: "git commit -m x" }),
+      "git commit -m x"
+    );
+  });
+
+  it("parseToolHookStdin reads tool fields", () => {
+    const p = parseToolHookStdin(
+      JSON.stringify({
+        cwd: "/tmp/p",
+        tool_name: "Bash",
+        tool_input: { command: "git commit -m hi" },
+      })
+    );
+    assert.equal(p.cwd, "/tmp/p");
+    assert.equal(p.tool_name, "Bash");
+    assert.equal(p.tool_input.command, "git commit -m hi");
+  });
+});
+
+describe("claude multi-hook install", () => {
+  it("installs four events without removing foreign hooks", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentstash-hooks2-"));
+    const settingsPath = path.join(dir, "settings.json");
+    const runnerPath = path.join(dir, "hook-runner.mjs");
+    fs.writeFileSync(runnerPath, "#!/usr/bin/env node\n");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        hooks: {
+          SessionStart: [
+            { hooks: [{ type: "command", command: "echo keep-me" }] },
+          ],
+        },
+      })
+    );
+
+    const r = installClaudeHooks({
+      force: true,
+      settingsPath,
+      runnerPath,
+    });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.events.sort(), [
+      "PostToolUse",
+      "PreCompact",
+      "SessionEnd",
+      "SessionStart",
+    ].sort());
+
+    const after = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    const startCmds = after.hooks.SessionStart.flatMap((g) =>
+      g.hooks.map((h) => h.command)
+    );
+    assert.ok(startCmds.some((c) => c.includes("echo keep-me")));
+    assert.ok(startCmds.some((c) => isHook(c)));
+    assert.ok(after.hooks.PreCompact);
+    assert.ok(after.hooks.SessionEnd);
+    assert.ok(after.hooks.PostToolUse);
+    assert.ok(
+      after.hooks.PostToolUse.some((g) => g.matcher === "Bash")
+    );
+
+    const u = uninstallClaudeHooks({
+      settingsPath,
+      removeScript: false,
+    });
+    assert.equal(u.removed, true);
+    const final = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    const start2 = (final.hooks?.SessionStart || []).flatMap((g) =>
+      (g.hooks || []).map((h) => h.command)
+    );
+    assert.ok(start2.some((c) => c.includes("echo keep-me")));
+    assert.ok(!start2.some((c) => isHook(c)));
+    assert.equal(final.hooks?.PreCompact, undefined);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("ourHookSpecs lists expected events", () => {
+    const events = ourHookSpecs("/tmp/r").map((s) => s.event);
+    assert.ok(events.includes("SessionStart"));
+    assert.ok(events.includes("PreCompact"));
+    assert.ok(events.includes("SessionEnd"));
+    assert.ok(events.includes("PostToolUse"));
+  });
+});

@@ -15,7 +15,7 @@ import {
 import { registerAgent, verifyApiKey } from "./register.js";
 import { installClaudeMcp, installSkill } from "./targets/claude.js";
 import { installCursorMcp } from "./targets/cursor.js";
-import { installSessionStartHook } from "./hooks.js";
+import { installClaudeHooks } from "./hooks.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -130,29 +130,34 @@ export async function runInit(opts) {
     console.log(`✓ Continuity skill: ${skill.path}`);
   }
 
-  // SessionStart auto-resume (Claude Code) — on by default unless --no-hooks
+  // Continuity hooks (Claude Code) — on by default unless --no-hooks
   const wantHooks =
     targets.claude && !flags["no-hooks"] && flags.hooks !== false;
   if (wantHooks) {
-    console.log("Installing SessionStart auto-resume hook...");
+    console.log("Installing Claude Code continuity hooks...");
     try {
-      const h = installSessionStartHook({ force: Boolean(flags.force) });
+      const h = installClaudeHooks({ force: Boolean(flags.force) });
       console.log(`✓ Hooks: ${h.detail}`);
+      if (h.events?.length) {
+        console.log(`  events: ${h.events.join(", ")}`);
+      }
     } catch (err) {
       console.error(`✗ Hooks: ${err.message}`);
       process.exitCode = 1;
     }
   } else if (targets.claude && flags["no-hooks"]) {
-    console.log("· SessionStart hook skipped (--no-hooks)");
+    console.log("· Continuity hooks skipped (--no-hooks)");
   }
 
   console.log(`
 Done. Next steps:
   1. Restart Claude Code / Cursor so config reloads
-  2. Open a project — Claude should see prior progress automatically (SessionStart hook)
-  3. Optional check: npx @agentstash/mcp doctor
-  4. Optional test: npx @agentstash/mcp session-start
+  2. Open a project — SessionStart injects prior progress automatically
+  3. PreCompact / SessionEnd merge-save progress; git commits are logged
+  4. Optional: npx @agentstash/mcp doctor
+  5. Optional: npx @agentstash/mcp session-start
 
-Mid-session: the skill still guides save_progress after meaningful steps.
+Mid-session: the skill still guides rich save_progress / remember.
+OpenCode & Codex harness adapters: see ROADMAP.md (CLI actions are shared).
 `);
 }
