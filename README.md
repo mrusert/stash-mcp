@@ -90,6 +90,10 @@ Memory is scoped to your current git project automatically (detected from `git r
 | `npx @agentstash/mcp init \| doctor \| uninstall` | **Install CLI** for humans |
 | `agentstash …` | Same CLI (if package bins are on PATH) |
 
+> **Note:** The package exposes a bin named `mcp` so `npx @agentstash/mcp` works.  
+> If an older 0.2.0 install fails with “could not determine executable”, use  
+> `npx -y -p @agentstash/mcp agentstash init …` or upgrade to **≥ 0.2.1**.
+
 ## Development
 
 ```bash
