@@ -15,6 +15,11 @@ import {
 import { registerAgent, verifyApiKey } from "./register.js";
 import { installClaudeMcp, installSkill } from "./targets/claude.js";
 import { installCursorMcp } from "./targets/cursor.js";
+import {
+  installOpenCodeMcp,
+  installOpenCodePlugin,
+} from "./targets/opencode.js";
+import { installCodexMcp, installCodexAgents } from "./targets/codex.js";
 import { installClaudeHooks } from "./hooks.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,12 +41,38 @@ function defaultAgentName() {
  * @param {Record<string, string|boolean>} flags
  */
 export function resolveTargets(flags) {
-  if (flags.all) return { claude: true, cursor: true };
-  if (flags.claude && flags.cursor) return { claude: true, cursor: true };
-  if (flags.claude) return { claude: true, cursor: false };
-  if (flags.cursor) return { claude: false, cursor: true };
-  // default: both
-  return { claude: true, cursor: true };
+  const any =
+    flags.claude ||
+    flags.cursor ||
+    flags.opencode ||
+    flags.codex ||
+    flags.all;
+
+  if (flags.all) {
+    return {
+      claude: true,
+      cursor: true,
+      opencode: true,
+      codex: true,
+    };
+  }
+
+  if (!any) {
+    // Back-compat default: Claude Code + Cursor
+    return {
+      claude: true,
+      cursor: true,
+      opencode: false,
+      codex: false,
+    };
+  }
+
+  return {
+    claude: Boolean(flags.claude),
+    cursor: Boolean(flags.cursor),
+    opencode: Boolean(flags.opencode),
+    codex: Boolean(flags.codex),
+  };
 }
 
 /**
@@ -102,15 +133,40 @@ export async function runInit(opts) {
     force: Boolean(flags.force),
   };
 
+  const installed = [];
+
   if (targets.claude) {
     console.log("Configuring Claude Code...");
     const r = installClaudeMcp(mcpOpts);
     if (r.ok) {
-      console.log(`✓ Claude: ${r.detail || r.action} (${r.method})`);
+      console.log(`✓ Claude MCP: ${r.detail || r.action} (${r.method})`);
       if (r.cliNote) console.log(`  note: ${r.cliNote}`);
+      installed.push("claude");
     } else {
       console.error(`✗ Claude: ${r.detail || "failed"}`);
       process.exitCode = 1;
+    }
+
+    if (!flags["no-skill"]) {
+      const skill = installSkill(loadSkillTemplate());
+      console.log(`✓ Claude skill: ${skill.path}`);
+    }
+
+    const wantHooks = !flags["no-hooks"] && flags.hooks !== false;
+    if (wantHooks) {
+      console.log("Installing Claude Code continuity hooks...");
+      try {
+        const h = installClaudeHooks({ force: Boolean(flags.force) });
+        console.log(`✓ Claude hooks: ${h.detail}`);
+        if (h.events?.length) {
+          console.log(`  events: ${h.events.join(", ")}`);
+        }
+      } catch (err) {
+        console.error(`✗ Claude hooks: ${err.message}`);
+        process.exitCode = 1;
+      }
+    } else {
+      console.log("· Claude hooks skipped (--no-hooks)");
     }
   }
 
@@ -119,45 +175,59 @@ export async function runInit(opts) {
     try {
       const r = installCursorMcp(mcpOpts);
       console.log(`✓ Cursor: ${r.detail}`);
+      installed.push("cursor");
     } catch (err) {
       console.error(`✗ Cursor: ${err.message}`);
       process.exitCode = 1;
     }
   }
 
-  if (targets.claude && !flags["no-skill"]) {
-    const skill = installSkill(loadSkillTemplate());
-    console.log(`✓ Continuity skill: ${skill.path}`);
-  }
-
-  // Continuity hooks (Claude Code) — on by default unless --no-hooks
-  const wantHooks =
-    targets.claude && !flags["no-hooks"] && flags.hooks !== false;
-  if (wantHooks) {
-    console.log("Installing Claude Code continuity hooks...");
+  if (targets.opencode) {
+    console.log("Configuring OpenCode...");
     try {
-      const h = installClaudeHooks({ force: Boolean(flags.force) });
-      console.log(`✓ Hooks: ${h.detail}`);
-      if (h.events?.length) {
-        console.log(`  events: ${h.events.join(", ")}`);
+      const m = installOpenCodeMcp(mcpOpts);
+      console.log(`✓ OpenCode MCP: ${m.detail}`);
+      if (!flags["no-hooks"]) {
+        const p = installOpenCodePlugin({ force: Boolean(flags.force) });
+        console.log(`✓ OpenCode plugin: ${p.detail}`);
+      } else {
+        console.log("· OpenCode plugin skipped (--no-hooks)");
       }
+      installed.push("opencode");
     } catch (err) {
-      console.error(`✗ Hooks: ${err.message}`);
+      console.error(`✗ OpenCode: ${err.message}`);
       process.exitCode = 1;
     }
-  } else if (targets.claude && flags["no-hooks"]) {
-    console.log("· Continuity hooks skipped (--no-hooks)");
+  }
+
+  if (targets.codex) {
+    console.log("Configuring Codex...");
+    try {
+      const m = installCodexMcp(mcpOpts);
+      console.log(`✓ Codex MCP: ${m.detail}`);
+      if (!flags["no-skill"]) {
+        const a = installCodexAgents({ force: Boolean(flags.force) });
+        console.log(`✓ Codex AGENTS.md: ${a.detail}`);
+      }
+      installed.push("codex");
+    } catch (err) {
+      console.error(`✗ Codex: ${err.message}`);
+      process.exitCode = 1;
+    }
   }
 
   console.log(`
-Done. Next steps:
-  1. Restart Claude Code / Cursor so config reloads
-  2. Open a project — SessionStart injects prior progress automatically
-  3. PreCompact / SessionEnd merge-save progress; git commits are logged
-  4. Optional: npx @agentstash/mcp doctor
-  5. Optional: npx @agentstash/mcp session-start
+Done. Installed for: ${installed.join(", ") || "(none)"}
 
-Mid-session: the skill still guides rich save_progress / remember.
-OpenCode & Codex harness adapters: see ROADMAP.md (CLI actions are shared).
+Next steps:
+  1. Restart the coding tool(s) so MCP reloads
+  2. Optional: npx @agentstash/mcp doctor
+  3. Optional: npx @agentstash/mcp session-start
+
+Notes:
+  • Claude Code: full hooks (SessionStart / PreCompact / SessionEnd / git commit)
+  • OpenCode: MCP + plugin (session/compact/tool hooks → same CLI)
+  • Codex: MCP + AGENTS.md (soft continuity — call resume_progress / save_progress)
+  • Cursor: MCP tools only
 `);
 }

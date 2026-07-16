@@ -14,6 +14,8 @@ import { detectClaudeMcp, detectSkill, hasClaudeCli } from "./targets/claude.js"
 import { detectCursorMcp, cursorMcpPath } from "./targets/cursor.js";
 import { claudeSettingsPath } from "./targets/claude.js";
 import { detectClaudeHooks } from "./hooks.js";
+import { detectOpenCode } from "./targets/opencode.js";
+import { detectCodex } from "./targets/codex.js";
 
 /**
  * @param {{ flags: Record<string, string|boolean> }} opts
@@ -26,10 +28,11 @@ export async function runDoctor(opts) {
 
   console.log("Agent Stash doctor\n");
 
-  // Key
   if (!apiKey) {
     console.log("✗ API key: not found");
-    console.log("  Set AGENT_STASH_API_KEY, pass --api-key, or run init --register");
+    console.log(
+      "  Set AGENT_STASH_API_KEY, pass --api-key, or run init --register"
+    );
     failed = true;
   } else {
     const source = flags["api-key"]
@@ -43,7 +46,6 @@ export async function runDoctor(opts) {
 
   console.log(`  API URL: ${apiUrl}`);
 
-  // Network
   if (apiKey) {
     const check = await verifyApiKey({ apiUrl, apiKey });
     if (check.ok) {
@@ -54,14 +56,12 @@ export async function runDoctor(opts) {
     }
   }
 
-  // Project
   const slug = getProjectSlug({
     project: flags.project ? String(flags.project) : undefined,
   });
   console.log(`✓ Project slug (cwd): ${slug}`);
   console.log(`  Progress memory key would be: ${slug}-progress`);
 
-  // Claude
   console.log(`\nClaude Code:`);
   console.log(`  CLI on PATH: ${hasClaudeCli() ? "yes" : "no"}`);
   console.log(`  settings: ${claudeSettingsPath()}`);
@@ -74,11 +74,8 @@ export async function runDoctor(opts) {
     console.log("· MCP entry: not found");
   }
   const skill = detectSkill();
-  if (skill) {
-    console.log(`✓ Continuity skill: ${skill.path}`);
-  } else {
-    console.log("· Continuity skill: not installed (optional)");
-  }
+  if (skill) console.log(`✓ Continuity skill: ${skill.path}`);
+  else console.log("· Continuity skill: not installed");
   const hook = detectClaudeHooks();
   if (hook.present) {
     const on = Object.entries(hook.events || {})
@@ -90,26 +87,39 @@ export async function runDoctor(opts) {
       }`
     );
   } else {
-    console.log(
-      "· Continuity hooks: not installed — run init without --no-hooks"
-    );
+    console.log("· Continuity hooks: not installed");
   }
 
-  // Cursor
   console.log(`\nCursor:`);
   console.log(`  config: ${cursorMcpPath()}`);
   const cursor = detectCursorMcp();
   if (cursor.length) {
-    for (const c of cursor) {
-      console.log(`✓ MCP entry: ${c.name}`);
-    }
+    for (const c of cursor) console.log(`✓ MCP entry: ${c.name}`);
   } else {
     console.log("· MCP entry: not found");
   }
 
-  if (!claude.length && !cursor.length) {
+  console.log(`\nOpenCode:`);
+  const oc = detectOpenCode();
+  console.log(`  config: ${oc.configPath}`);
+  if (oc.mcp) console.log("✓ MCP entry: agent-stash");
+  else console.log("· MCP entry: not found");
+  if (oc.plugin) console.log(`✓ Continuity plugin: ${oc.pluginPath}`);
+  else console.log("· Continuity plugin: not found");
+
+  console.log(`\nCodex:`);
+  const cx = detectCodex();
+  console.log(`  config: ${cx.configPath}`);
+  if (cx.mcp) console.log("✓ MCP entry: agent-stash");
+  else console.log("· MCP entry: not found");
+  if (cx.agents) console.log(`✓ AGENTS.md continuity block: ${cx.agentsPath}`);
+  else console.log("· AGENTS.md continuity block: not found");
+
+  const anyMcp =
+    claude.length > 0 || cursor.length > 0 || oc.mcp || cx.mcp;
+  if (!anyMcp) {
     console.log(
-      "\n✗ No MCP entry in Claude Code or Cursor — run: npx @agentstash/mcp init"
+      "\n✗ No MCP entry on any tool — run: npx @agentstash/mcp init --claude (or --opencode / --codex)"
     );
     failed = true;
   }

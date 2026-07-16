@@ -27,12 +27,13 @@ export function parseArgs(argv) {
       const key = a.slice(2);
       const next = argv[i + 1];
       if (next && !next.startsWith("-")) {
-        // boolean flags that never take values
         const boolFlags = new Set([
           "force",
           "yes",
           "claude",
           "cursor",
+          "opencode",
+          "codex",
           "all",
           "no-skill",
           "no-hooks",
@@ -76,39 +77,37 @@ Usage:
   npx @agentstash/mcp <command> [options]
 
 Commands:
-  init            Configure MCP, skill, and continuity hooks (Claude Code)
+  init            Configure MCP + continuity for coding tools
   doctor          Check API key, connectivity, and install status
-  uninstall       Remove Agent Stash MCP entries, skill, and hooks
-  session-start   Print prior progress brief (SessionStart hook)
-  checkpoint      Merge-save progress (PreCompact / SessionEnd hooks)
-  log-commit      Log a git commit event (PostToolUse hook)
+  uninstall       Remove Agent Stash MCP / hooks / instructions
+  session-start   Print prior progress brief
+  checkpoint      Merge-save progress
+  log-commit      Log a git commit event
   help            Show this help
+
+init targets (combine as needed):
+  --claude               Claude Code (MCP + skill + hooks)
+  --cursor               Cursor (MCP)
+  --opencode             OpenCode (MCP + continuity plugin)
+  --codex                Codex (MCP + AGENTS.md)
+  --all                  All of the above
+  (default)              --claude --cursor
 
 init options:
   --api-key <sk_...>     API key (or AGENT_STASH_API_KEY / saved config)
   --api-url <url>        API base URL (default: https://agentstash.ai)
-  --register             Register a free agent key (uses --agent-name)
-  --agent-name <name>    Name for registration (default: local machine user)
-  --claude               Claude Code only
-  --cursor               Cursor only
-  --all                  Claude Code + Cursor (also the default)
-  --force                Replace existing Agent Stash MCP entry / hook
-  --no-skill             Skip installing the Claude continuity skill
-  --no-hooks             Skip all continuity hooks (Claude only)
-  --hooks                Install hooks (default on for Claude)
-
-  Continuity hooks (Claude Code): SessionStart, PreCompact, SessionEnd,
-  PostToolUse(Bash→git commit). OpenCode/Codex: see ROADMAP.md.
+  --register             Register a free agent key
+  --agent-name <name>    Name for registration
+  --force                Replace existing entries
+  --no-skill             Skip Claude skill / Codex AGENTS.md
+  --no-hooks             Skip Claude hooks / OpenCode plugin
   --project <slug>       Set AGENT_STASH_PROJECT in MCP env
   --yes                  Non-interactive
 
-doctor options:
-  --api-key, --api-url   Same as init
-
 Examples:
-  npx @agentstash/mcp init --register --agent-name my-laptop --yes
-  npx @agentstash/mcp init --api-key sk_... --all
+  npx @agentstash/mcp init --api-key sk_... --claude --force
+  npx @agentstash/mcp init --api-key sk_... --opencode --codex
+  npx @agentstash/mcp init --register --agent-name laptop --all
   npx @agentstash/mcp doctor
-  agentstash uninstall
 `);
 }

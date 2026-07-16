@@ -1,7 +1,7 @@
 {
   "name": "@agentstash/mcp",
-  "version": "0.4.1",
-  "description": "MCP server + install CLI for Agent Stash — shared memory and continuity hooks for AI coding tools",
+  "version": "0.5.0",
+  "description": "MCP server + install CLI for Agent Stash — Claude Code, Cursor, OpenCode, and Codex",
   "type": "module",
   "main": "src/index.js",
   "bin": {

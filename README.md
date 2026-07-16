@@ -1,87 +1,65 @@
 # @agentstash/mcp
 
-Shared memory for Claude Code, Cursor, Codex, and (soon) OpenCode. Decisions and progress persist across sessions and tools.
+Shared memory for **Claude Code**, **Cursor**, **OpenCode**, and **Codex**. Progress and decisions persist across sessions and tools.
 
-## Install (one command)
-
-```bash
-npx @agentstash/mcp init --api-key sk_your_key_here --claude --force
-# or register a free key:
-npx @agentstash/mcp init --register --agent-name my-laptop --claude
-```
-
-**Restart Claude Code** after init.
+## Install
 
 ```bash
-npx @agentstash/mcp doctor
+# Claude Code (MCP + skill + full hooks) — default with Cursor
+npx @agentstash/mcp init --api-key sk_... --claude --force
+
+# OpenCode (MCP + continuity plugin)
+npx @agentstash/mcp init --api-key sk_... --opencode --force
+
+# Codex (MCP + AGENTS.md continuity notes)
+npx @agentstash/mcp init --api-key sk_... --codex --force
+
+# Everything
+npx @agentstash/mcp init --api-key sk_... --all --force
 ```
 
-## What `init` installs (Claude Code)
+Or register a free key: `--register --agent-name my-laptop`
 
-| Piece | Purpose |
-|-------|---------|
-| MCP server | Tools: `remember`, `save_progress`, `resume_progress`, … |
-| Continuity skill | Soft guidance for mid-session saves |
-| **SessionStart** hook | Inject prior `{project}-progress` into context |
-| **PreCompact** hook | Merge-save progress before context compaction |
-| **SessionEnd** hook | Merge-save progress on clean exit |
-| **PostToolUse** (Bash) | If command is `git commit`, append a log event |
+Restart the tool after install. Check: `npx @agentstash/mcp doctor`
 
-Hooks call the **HTTP API** via CLI (`session-start`, `checkpoint`, `log-commit`). They never call MCP tools directly.
+## What you get per harness
 
-Skip hooks: `--no-hooks`. Replace: `--force`.
+| Harness | MCP tools | Auto continuity |
+|---------|-----------|-----------------|
+| Claude Code | Yes | SessionStart inject, PreCompact/SessionEnd checkpoint, git-commit log |
+| OpenCode | Yes | Plugin hooks → same CLI (`session-start`, `checkpoint`, `log-commit`) |
+| Codex | Yes | Soft: `~/.codex/AGENTS.md` tells the model to resume/save |
+| Cursor | Yes | Soft: tools only |
 
 ## Continuity model
 
 ```text
-Agent (skill/MCP)  → rich save_progress / remember   (judgment)
-Hooks              → guaranteed checkpoints + commit log
-Crash / kill -9    → no hook; prior checkpoints bound the loss
+Agent (MCP tools)  → rich save_progress / remember
+Hooks / plugins    → guaranteed checkpoints (Claude, OpenCode)
+AGENTS.md          → soft guidance (Codex)
 ```
 
-OpenCode & Codex adapters: see [ROADMAP.md](./ROADMAP.md). CLI actions are harness-agnostic.
-
-## CLI commands
+CLI (any harness):
 
 | Command | Role |
 |---------|------|
-| `init` | Install MCP + skill + hooks |
-| `doctor` | Health check |
-| `uninstall` | Remove MCP + skill + hooks |
-| `session-start` | Print progress brief (SessionStart) |
-| `checkpoint <reason>` | Merge-save progress (`pre_compact`, `session_end`, …) |
-| `log-commit` | Log git commit if stdin/tool payload matches |
+| `session-start` | Prior progress brief |
+| `checkpoint pre_compact\|session_end` | Merge-save progress |
+| `log-commit` | Log git commit events |
 
-## Manual MCP config
+## Config locations
 
-```json
-{
-  "mcpServers": {
-    "agent-stash": {
-      "command": "npx",
-      "args": ["-y", "@agentstash/mcp"],
-      "env": { "AGENT_STASH_API_KEY": "sk_..." }
-    }
-  }
-}
-```
+| Tool | Where |
+|------|--------|
+| Claude | `~/.claude/settings.json` + hooks + skill |
+| Cursor | `~/.cursor/mcp.json` |
+| OpenCode | `~/.config/opencode/opencode.json` + `plugins/agent-stash.js` |
+| Codex | `~/.codex/config.toml` + `AGENTS.md` |
+| Key store | `~/.agentstash/config.json` |
 
-## Tools
+## MCP tools
 
-| Tool | When to use |
-|------|-------------|
-| `remember` / `recall` | Long-lived decisions |
-| `save_progress` / `resume_progress` | Task snapshot (rich, agent-written) |
-| `log_event` / `read_log` | Audit trail |
-| `list_memories` / `find_memory` / `forget` | Key management |
-
-## Environment
-
-| Variable | Description |
-|----------|-------------|
-| `AGENT_STASH_API_KEY` | Required for MCP server |
-| `AGENT_STASH_PROJECT` | Override project slug |
-| `AGENT_STASH_URL` | Default `https://agentstash.ai` |
+`remember` / `recall` · `save_progress` / `resume_progress` · `log_event` / `read_log` · `list_memories` / `find_memory` / `forget`
 
 ## Development
 
@@ -89,6 +67,8 @@ OpenCode & Codex adapters: see [ROADMAP.md](./ROADMAP.md). CLI actions are harne
 npm test
 node src/cli.js help
 ```
+
+See [ROADMAP.md](./ROADMAP.md).
 
 ## License
 

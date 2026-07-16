@@ -19,7 +19,9 @@ Users should not hand-edit `~/.claude/settings.json` or invent continuity habits
 - PostToolUse(Bash) → log git commits  
 
 Mid-session rich `save_progress` stays skill/judgment-based.  
-OpenCode/Codex: same CLI actions later; see `ROADMAP.md`.
+OpenCode: `init --opencode` → MCP + `~/.config/opencode/plugins/agent-stash.js`.  
+Codex: `init --codex` → `~/.codex/config.toml` + AGENTS.md block.  
+See `ROADMAP.md`.
 
 ## Mapping MCP tools → API
 

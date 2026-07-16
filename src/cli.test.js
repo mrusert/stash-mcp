@@ -60,24 +60,30 @@ describe("parseArgs", () => {
 
 describe("resolveTargets", () => {
   it("defaults to both", () => {
-    assert.deepEqual(resolveTargets({}), { claude: true, cursor: true });
+    assert.deepEqual(resolveTargets({}), { claude: true, cursor: true, opencode: false, codex: false });
   });
   it("respects --claude only", () => {
     assert.deepEqual(resolveTargets({ claude: true }), {
       claude: true,
       cursor: false,
+      opencode: false,
+      codex: false,
     });
   });
   it("respects --cursor only", () => {
     assert.deepEqual(resolveTargets({ cursor: true }), {
       claude: false,
       cursor: true,
+      opencode: false,
+      codex: false,
     });
   });
   it("respects --all", () => {
     assert.deepEqual(resolveTargets({ all: true }), {
       claude: true,
       cursor: true,
+      opencode: true,
+      codex: true,
     });
   });
 });
@@ -549,5 +555,117 @@ describe("claude multi-hook install", () => {
     assert.ok(events.includes("PreCompact"));
     assert.ok(events.includes("SessionEnd"));
     assert.ok(events.includes("PostToolUse"));
+  });
+});
+
+
+import {
+  buildOpenCodeMcpBlock,
+  installOpenCodeMcp,
+  installOpenCodePlugin,
+  uninstallOpenCode,
+} from "./cli/targets/opencode.js";
+import {
+  buildCodexMcpSection,
+  stripCodexMcpSection,
+  installCodexMcp,
+  installCodexAgents,
+  uninstallCodex,
+  tomlString,
+} from "./cli/targets/codex.js";
+
+describe("resolveTargets multi-harness", () => {
+  it("supports opencode and codex only", () => {
+    assert.deepEqual(resolveTargets({ opencode: true }), {
+      claude: false,
+      cursor: false,
+      opencode: true,
+      codex: false,
+    });
+    assert.deepEqual(resolveTargets({ codex: true, claude: true }), {
+      claude: true,
+      cursor: false,
+      opencode: false,
+      codex: true,
+    });
+  });
+  it("all enables every target", () => {
+    assert.deepEqual(resolveTargets({ all: true }), {
+      claude: true,
+      cursor: true,
+      opencode: true,
+      codex: true,
+    });
+  });
+});
+
+describe("opencode install", () => {
+  it("merges mcp block", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oc-"));
+    const configPath = path.join(dir, "opencode.json");
+    fs.writeFileSync(configPath, JSON.stringify({ model: "x" }));
+    const r = installOpenCodeMcp({
+      apiKey: "sk_x",
+      force: true,
+      configPath,
+    });
+    assert.equal(r.ok, true);
+    const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    assert.equal(cfg.mcp["agent-stash"].type, "local");
+    assert.deepEqual(cfg.mcp["agent-stash"].command, ["npx", "-y", "@agentstash/mcp"]);
+    assert.equal(cfg.mcp["agent-stash"].environment.AGENT_STASH_API_KEY, "sk_x");
+    const u = uninstallOpenCode({ configPath, pluginPath: path.join(dir, "p.js") });
+    assert.equal(u.mcp, true);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("writes plugin source with marker", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ocp-"));
+    const pluginPath = path.join(dir, "agent-stash.js");
+    const r = installOpenCodePlugin({ force: true, pluginPath });
+    assert.equal(r.ok, true);
+    const src = fs.readFileSync(pluginPath, "utf8");
+    assert.match(src, /agentstash-opencode-plugin/);
+    assert.match(src, /session\.created|session.created/);
+    assert.match(src, /experimental\.session\.compacting/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("codex install", () => {
+  it("tomlString escapes quotes", () => {
+    assert.equal(tomlString('a"b'), '"a\\"b"'.replace('\\\\','\\')); // just check contains
+    assert.match(tomlString('sk_x'), /sk_x/);
+  });
+
+  it("installs and strips marked mcp section", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cx-"));
+    const configPath = path.join(dir, "config.toml");
+    fs.writeFileSync(configPath, "model = \"gpt\"\n");
+    const r = installCodexMcp({ apiKey: "sk_test", force: true, configPath });
+    assert.equal(r.ok, true);
+    const text = fs.readFileSync(configPath, "utf8");
+    assert.match(text, /BEGIN agent-stash/);
+    assert.match(text, /mcp_servers\.agent-stash/);
+    assert.match(text, /sk_test/);
+    const stripped = stripCodexMcpSection(text);
+    assert.ok(!stripped.includes("agent-stash"));
+    assert.match(stripped, /model/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("installs agents block", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cxa-"));
+    const agentsPath = path.join(dir, "AGENTS.md");
+    const r = installCodexAgents({ force: true, agentsPath });
+    assert.equal(r.ok, true);
+    const t = fs.readFileSync(agentsPath, "utf8");
+    assert.match(t, /resume_progress/);
+    const u = uninstallCodex({
+      configPath: path.join(dir, "missing.toml"),
+      agentsPath,
+    });
+    assert.equal(u.agents, true);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
