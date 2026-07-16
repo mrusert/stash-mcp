@@ -45,28 +45,92 @@ export function extractBashCommand(toolInput) {
 }
 
 /**
+ * Strip quotes/comments so "echo 'git commit'" is not a false positive.
+ * @param {string} cmd
+ */
+export function stripShellNoise(cmd) {
+  return String(cmd || "")
+    // single-quoted strings
+    .replace(/'(?:\\'|[^'])*'/g, " ")
+    // double-quoted strings (rough)
+    .replace(/"(?:\\"|[^"])*"/g, " ")
+    // backticks
+    .replace(/`[^`]*`/g, " ")
+    // line comments
+    .replace(/(^|\s)#[^\n]*/g, " ");
+}
+
+/**
+ * True if this shell segment runs `git … commit` as a subcommand
+ * (not "echo git commit", not "git status").
+ * @param {string} segment
+ */
+export function segmentIsGitCommit(segment) {
+  const tokens = String(segment || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!tokens.length) return false;
+
+  let i = 0;
+  // optional env assignments: FOO=bar git commit
+  while (i < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])) {
+    i += 1;
+  }
+  if (i >= tokens.length) return false;
+
+  const bin = tokens[i];
+  if (bin !== "git" && !bin.endsWith("/git")) return false;
+  i += 1;
+
+  // Walk git global options until the first subcommand
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (t === "commit") return true;
+    if (!t.startsWith("-")) {
+      // first non-option token is the subcommand
+      return false;
+    }
+    // options that take a separate argument
+    if (
+      t === "-C" ||
+      t === "-c" ||
+      t === "--git-dir" ||
+      t === "--work-tree" ||
+      t === "--namespace" ||
+      t === "--config-env"
+    ) {
+      i += 2;
+      continue;
+    }
+    // -c key=value sometimes as one token already handled; -Cpath rare
+    i += 1;
+  }
+  return false;
+}
+
+/**
  * @param {string} command
  * @returns {{ isCommit: boolean, message?: string }}
  */
 export function detectGitCommit(command) {
-  const cmd = String(command || "");
-  // Match git commit, including paths like /usr/bin/git commit
-  if (!/\bgit\b[\s\S]*\bcommit\b/.test(cmd) && !/\bgit\s+commit\b/.test(cmd)) {
-    // also: git -C foo commit
-    if (!/\bgit\b/.test(cmd) || !/\bcommit\b/.test(cmd)) {
-      return { isCommit: false };
-    }
-  }
-  // Require commit as a git subcommand-ish signal
-  if (!/\bcommit\b/.test(cmd)) return { isCommit: false };
+  const original = String(command || "");
+  if (!original.trim()) return { isCommit: false };
 
+  // Extract -m message from original (before stripping quotes)
   let message;
-  const m1 = cmd.match(/-m\s+(['"])([\s\S]*?)\1/);
+  const m1 = original.match(/-m\s+(['"])([\s\S]*?)\1/);
   if (m1) message = m1[2];
   else {
-    const m2 = cmd.match(/-m\s+(\S+)/);
+    const m2 = original.match(/-m\s+(\S+)/);
     if (m2) message = m2[1];
   }
+
+  const cleaned = stripShellNoise(original);
+  // Split compound commands; any real git commit segment counts
+  const segments = cleaned.split(/(?:&&|\|\||;|\n|\|)/);
+  const isCommit = segments.some((seg) => segmentIsGitCommit(seg));
+  if (!isCommit) return { isCommit: false };
   return { isCommit: true, message };
 }
 

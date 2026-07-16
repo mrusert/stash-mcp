@@ -56,9 +56,17 @@ export function installHookRunner() {
  * Agent Stash hook runner (installed by: npx @agentstash/mcp init)
  * Marker: ${HOOK_MARKER}
  * Usage: node hook-runner.mjs <session-start|checkpoint|log-commit> [args...]
+ *
+ * Important:
+ * - Invokes the \`agentstash\` bin explicitly (not bare \`mcp\`) so npx never
+ *   looks for a PATH binary named "mcp".
+ * - Runs with cwd=~/.agentstash so a project checkout of @agentstash/mcp
+ *   (e.g. working inside stash-mcp/) cannot shadow the published package.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 const cliArgs = process.argv.slice(2);
 if (cliArgs.length === 0) {
@@ -75,14 +83,25 @@ try {
   /* empty */
 }
 
+const safeCwd = path.join(os.homedir(), ".agentstash");
+try {
+  fs.mkdirSync(safeCwd, { recursive: true });
+} catch {
+  /* ignore */
+}
+
+// Explicit package + bin name. Avoid: npx @agentstash/mcp <cmd>
+// which maps the package name to the "mcp" bin and breaks under local
+// package.json shadowing in the stash-mcp repo.
 const r = spawnSync(
   "npx",
-  ["-y", "@agentstash/mcp", ...cliArgs],
+  ["--yes", "--package=@agentstash/mcp", "agentstash", ...cliArgs],
   {
     encoding: "utf8",
     input: stdin,
     env: process.env,
     timeout: 25000,
+    cwd: safeCwd,
   }
 );
 

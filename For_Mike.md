@@ -50,7 +50,12 @@ Project slug = git remote repo name (or cwd / `AGENT_STASH_PROJECT`).
 | `ROADMAP.md` | OpenCode + Codex adapter plan |
 
 User key store: `~/.agentstash/config.json` (0600).  
-Hook runner: `~/.agentstash/bin/hook-runner.mjs` → `npx @agentstash/mcp <cmd>`.
+Hook runner: `~/.agentstash/bin/hook-runner.mjs` →  
+`npx --package=@agentstash/mcp agentstash <cmd>` with **cwd=`~/.agentstash`**  
+(so working inside the `stash-mcp` repo does not shadow the published package).
+
+Commit detection strips quotes/comments and only treats `git … commit` as a real subcommand  
+(avoids logging when Bash merely echoes the words “git commit”).
 
 ## Publish
 

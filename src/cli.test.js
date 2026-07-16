@@ -437,6 +437,32 @@ describe("log-commit detection", () => {
     assert.equal(detectGitCommit("git status").isCommit, false);
   });
 
+  it("ignores git commit inside echo/strings", () => {
+    assert.equal(
+      detectGitCommit('echo \'{"cmd":"git commit -m x"}\'').isCommit,
+      false
+    );
+    assert.equal(
+      detectGitCommit('echo "git commit -m foo"').isCommit,
+      false
+    );
+  });
+
+  it("ignores git commit only in shell comments", () => {
+    assert.equal(detectGitCommit("echo hi # git commit -m x").isCommit, false);
+  });
+
+  it("detects git -C path commit", () => {
+    assert.equal(detectGitCommit("git -C /tmp/repo commit -m hi").isCommit, true);
+  });
+
+  it("detects commit after &&", () => {
+    assert.equal(
+      detectGitCommit("npm test && git commit -m ok").isCommit,
+      true
+    );
+  });
+
   it("extracts command from tool input", () => {
     assert.equal(
       extractBashCommand({ command: "git commit -m x" }),
