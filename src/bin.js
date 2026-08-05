@@ -13,6 +13,7 @@ const CLI_COMMANDS = new Set([
   "session-start",
   "checkpoint",
   "log-commit",
+  "handoff",
   "help",
   "--help",
   "-h",

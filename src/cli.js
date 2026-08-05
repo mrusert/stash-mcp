@@ -11,6 +11,7 @@ import { runUninstall } from "./cli/uninstall.js";
 import { runSessionStart } from "./cli/run-session-start.js";
 import { runCheckpointCli } from "./cli/run-checkpoint.js";
 import { runLogCommitCli } from "./cli/run-log-commit.js";
+import { runHandoffCli } from "./cli/run-handoff.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json");
@@ -40,6 +41,8 @@ try {
     await runCheckpointCli({ flags, positionals });
   } else if (command === "log-commit") {
     await runLogCommitCli({ flags });
+  } else if (command === "handoff") {
+    await runHandoffCli({ flags, positionals });
   } else {
     console.error(`Unknown command: ${command}\n`);
     printHelp();

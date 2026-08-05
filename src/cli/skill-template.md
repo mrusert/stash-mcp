@@ -25,6 +25,9 @@ You have Agent Stash MCP tools. Memory is scoped to the current git project auto
 ## Session end / context full
 
 - Call `save_progress` one more time with the best current state before stopping or compacting.
+- If a **provider usage limit** is hit, Claude Code may auto-run `handoff` via the StopFailure hook.
+  The user can also run: `npx @agentstash/mcp handoff` (optional `--to opencode`).
+  On resume in any tool: `resume_progress` / SessionStart — do not re-plan from zero.
 
 ## Tools (quick map)
 

@@ -41,6 +41,8 @@ export function parseArgs(argv) {
           "register",
           "help",
           "version",
+          "no-log",
+          "json",
         ]);
         if (boolFlags.has(key)) {
           flags[key] = true;
@@ -56,6 +58,17 @@ export function parseArgs(argv) {
     if (a.startsWith("-") && a.length === 2) {
       const map = { f: "force", y: "yes", h: "help", V: "version" };
       const key = map[a.slice(1)] || a.slice(1);
+      // -m <message> for handoff note
+      if (key === "m") {
+        const next = argv[i + 1];
+        if (next && !next.startsWith("-")) {
+          flags.message = next;
+          i++;
+        } else {
+          flags.m = true;
+        }
+        continue;
+      }
       flags[key] = true;
       continue;
     }
@@ -83,6 +96,7 @@ Commands:
   session-start   Print prior progress brief
   checkpoint      Merge-save progress
   log-commit      Log a git commit event
+  handoff         Freeze progress + print resume targets (provider limits)
   help            Show this help
 
 init targets (combine as needed):
@@ -104,10 +118,19 @@ init options:
   --project <slug>       Set AGENT_STASH_PROJECT in MCP env
   --yes                  Non-interactive
 
+handoff options:
+  -m, --message <text>   Note stamped onto progress (optional)
+  --to <target>          Launch after freeze: opencode | claude | codex | cursor
+  --no-log               Skip project log event
+  --json                 Machine-readable output
+  --project <slug>       Override project slug
+
 Examples:
   npx @agentstash/mcp init --api-key sk_... --claude --force
   npx @agentstash/mcp init --api-key sk_... --opencode --codex
   npx @agentstash/mcp init --register --agent-name laptop --all
   npx @agentstash/mcp doctor
+  npx @agentstash/mcp handoff
+  npx @agentstash/mcp handoff -m "mid-auth-refactor" --to opencode
 `);
 }

@@ -17,8 +17,10 @@ Users should not hand-edit `~/.claude/settings.json` or invent continuity habits
 - SessionStart → inject progress brief  
 - PreCompact / SessionEnd → merge-save checkpoint (preserves agent fields)  
 - PostToolUse(Bash) → log git commits  
+- **StopFailure → `handoff`** (API errors: rate limit, overload, billing — model may not be able to call tools)
 
 Mid-session rich `save_progress` stays skill/judgment-based.  
+Human escape hatch: `npx @agentstash/mcp handoff` (`-m` note, `--to opencode|claude|codex`).  
 OpenCode: `init --opencode` → MCP + `~/.config/opencode/plugins/agent-stash.js`.  
 Codex: `init --codex` → `~/.codex/config.toml` + AGENTS.md block.  
 See `ROADMAP.md`.
@@ -45,11 +47,12 @@ Project slug = git remote repo name (or cwd / `AGENT_STASH_PROJECT`).
 | `src/cli/targets/cursor.js` | `~/.cursor/mcp.json` |
 | `src/cli/skill-template.md` | Continuity skill body |
 | `src/cli/session-brief.js` | Fetch + format progress brief |
-| `src/cli/checkpoint.js` | Merge-save progress |
+| `src/cli/checkpoint.js` | Merge-save progress (reasons include `handoff`) |
+| `src/cli/handoff.js` | Freeze progress + resume card + optional launch |
 | `src/cli/log-commit.js` | Detect/log git commits |
-| `src/cli/hooks.js` | Install all Claude Code continuity hooks |
-| `src/cli/run-*.js` | CLI entry for session-start / checkpoint / log-commit |
-| `ROADMAP.md` | OpenCode + Codex adapter plan |
+| `src/cli/hooks.js` | Install all Claude Code continuity hooks (incl. StopFailure) |
+| `src/cli/run-*.js` | CLI entry for session-start / checkpoint / log-commit / handoff |
+| `ROADMAP.md` | Multi-harness continuity plan |
 
 User key store: `~/.agentstash/config.json` (0600).  
 Hook runner: `~/.agentstash/bin/hook-runner.mjs` →  

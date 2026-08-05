@@ -430,6 +430,25 @@ describe("mergeProgressSnapshot", () => {
     assert.match(m.task, /auto checkpoint/i);
     assert.equal(m.checkpoint_reason, "session_end");
   });
+
+  it("stamps handoff fields", () => {
+    const m = mergeProgressSnapshot(
+      { task: "X", next_step: "Y" },
+      "handoff",
+      {
+        message: "hit limit",
+        error_type: "rate_limit",
+        error_message: "429",
+        source: "hook:StopFailure",
+      }
+    );
+    assert.equal(m.checkpoint_reason, "handoff");
+    assert.equal(m.handoff_note, "hit limit");
+    assert.equal(m.handoff_error_type, "rate_limit");
+    assert.equal(m.handoff_error_message, "429");
+    assert.equal(m.handoff_source, "hook:StopFailure");
+    assert.ok(m.handoff_at);
+  });
 });
 
 describe("log-commit detection", () => {
@@ -491,7 +510,7 @@ describe("log-commit detection", () => {
 });
 
 describe("claude multi-hook install", () => {
-  it("installs four events without removing foreign hooks", () => {
+  it("installs five events without removing foreign hooks", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentstash-hooks2-"));
     const settingsPath = path.join(dir, "settings.json");
     const runnerPath = path.join(dir, "hook-runner.mjs");
@@ -518,6 +537,7 @@ describe("claude multi-hook install", () => {
       "PreCompact",
       "SessionEnd",
       "SessionStart",
+      "StopFailure",
     ].sort());
 
     const after = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
@@ -532,6 +552,11 @@ describe("claude multi-hook install", () => {
     assert.ok(
       after.hooks.PostToolUse.some((g) => g.matcher === "Bash")
     );
+    assert.ok(after.hooks.StopFailure);
+    const stopCmds = after.hooks.StopFailure.flatMap((g) =>
+      (g.hooks || []).map((h) => h.command)
+    );
+    assert.ok(stopCmds.some((c) => c.includes("handoff")));
 
     const u = uninstallClaudeHooks({
       settingsPath,
@@ -545,6 +570,7 @@ describe("claude multi-hook install", () => {
     assert.ok(start2.some((c) => c.includes("echo keep-me")));
     assert.ok(!start2.some((c) => isHook(c)));
     assert.equal(final.hooks?.PreCompact, undefined);
+    assert.equal(final.hooks?.StopFailure, undefined);
 
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -555,6 +581,7 @@ describe("claude multi-hook install", () => {
     assert.ok(events.includes("PreCompact"));
     assert.ok(events.includes("SessionEnd"));
     assert.ok(events.includes("PostToolUse"));
+    assert.ok(events.includes("StopFailure"));
   });
 });
 
@@ -667,5 +694,173 @@ describe("codex install", () => {
     });
     assert.equal(u.agents, true);
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+import {
+  parseHandoffStdin,
+  formatHandoffCard,
+  tryLaunchTarget,
+  runHandoff,
+  resolveLaunchSpec,
+  HANDOFF_TARGETS,
+} from "./cli/handoff.js";
+
+describe("handoff", () => {
+  it("parseHandoffStdin extracts StopFailure fields", () => {
+    const p = parseHandoffStdin(
+      JSON.stringify({
+        cwd: "/tmp/proj",
+        hook_event_name: "StopFailure",
+        error_type: "rate_limit",
+        error_message: "You've hit your limit",
+      })
+    );
+    assert.equal(p.cwd, "/tmp/proj");
+    assert.equal(p.error_type, "rate_limit");
+    assert.match(p.error_message, /limit/i);
+    assert.equal(p.hook_event_name, "StopFailure");
+  });
+
+  it("formatHandoffCard includes resume targets", () => {
+    const text = formatHandoffCard({
+      project: "demo",
+      ok: true,
+      snapshot: {
+        task: "Build handoff",
+        next_step: "Write tests",
+        handoff_note: "mid work",
+        saved_at: "2026-01-01T00:00:00Z",
+      },
+      error_type: "rate_limit",
+    });
+    assert.match(text, /Handoff saved/);
+    assert.match(text, /demo/);
+    assert.match(text, /Build handoff/);
+    assert.match(text, /Write tests/);
+    assert.match(text, /opencode/);
+    assert.match(text, /resume_progress/);
+    assert.match(text, /rate_limit/);
+  });
+
+  it("resolveLaunchSpec covers known targets", () => {
+    assert.equal(resolveLaunchSpec("opencode")?.bin, "opencode");
+    assert.equal(resolveLaunchSpec("claude")?.bin, "claude");
+    assert.equal(resolveLaunchSpec("codex")?.bin, "codex");
+    assert.equal(resolveLaunchSpec("cursor"), null);
+    assert.ok(HANDOFF_TARGETS.includes("opencode"));
+  });
+
+  it("tryLaunchTarget fails gracefully when binary missing", () => {
+    const r = tryLaunchTarget({
+      target: "opencode",
+      cwd: "/tmp",
+      whichImpl: () => false,
+    });
+    assert.equal(r.ok, false);
+    assert.match(r.detail, /not on PATH/);
+  });
+
+  it("tryLaunchTarget skips cursor with instructions", () => {
+    const r = tryLaunchTarget({ target: "cursor", cwd: "/tmp" });
+    assert.equal(r.ok, false);
+    assert.match(r.detail, /Cursor/i);
+  });
+
+  it("tryLaunchTarget spawns when binary present", () => {
+    let spawned = null;
+    const r = tryLaunchTarget({
+      target: "opencode",
+      cwd: "/tmp/proj",
+      whichImpl: () => true,
+      spawnImpl: (bin, args, opts) => {
+        spawned = { bin, args, opts };
+        return { unref() {} };
+      },
+    });
+    assert.equal(r.ok, true);
+    assert.equal(spawned.bin, "opencode");
+    assert.equal(spawned.opts.cwd, "/tmp/proj");
+    assert.equal(spawned.opts.detached, true);
+  });
+
+  it("runHandoff checkpoints with mocked fetch", async () => {
+    const puts = [];
+    const posts = [];
+    const fetchImpl = async (url, init) => {
+      const method = (init?.method || "GET").toUpperCase();
+      if (method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({
+              task: "Prior task",
+              next_step: "Do next",
+              completed_steps: ["a"],
+            });
+          },
+        };
+      }
+      if (method === "PUT") {
+        puts.push({ url, body: init.body });
+        return { ok: true, status: 200, async text() { return "{}"; } };
+      }
+      if (method === "POST") {
+        posts.push({ url, body: init.body });
+        // create log then append
+        return {
+          ok: true,
+          status: 200,
+          async text() {
+            return JSON.stringify({ log_id: "log_test" });
+          },
+        };
+      }
+      return { ok: false, status: 500, async text() { return "err"; } };
+    };
+
+    const result = await runHandoff({
+      project: "handoff-demo",
+      apiKey: "sk_test",
+      apiUrl: "https://example.com",
+      message: "manual freeze",
+      noLog: false,
+      fetchImpl,
+      stdinRaw: JSON.stringify({
+        hook_event_name: "StopFailure",
+        error_type: "rate_limit",
+        error_message: "limit hit",
+      }),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.project, "handoff-demo");
+    assert.equal(result.source, "hook:StopFailure");
+    assert.match(result.text, /Handoff saved/);
+    assert.equal(puts.length, 1);
+    const snap = JSON.parse(puts[0].body);
+    assert.equal(snap.checkpoint_reason, "handoff");
+    assert.equal(snap.task, "Prior task");
+    assert.equal(snap.handoff_note, "manual freeze");
+    assert.equal(snap.handoff_error_type, "rate_limit");
+    assert.ok(posts.length >= 1);
+  });
+
+  it("parseArgs supports handoff flags", () => {
+    const r = parseArgs([
+      "handoff",
+      "-m",
+      "note here",
+      "--to",
+      "opencode",
+      "--no-log",
+      "--json",
+    ]);
+    assert.equal(r.command, "handoff");
+    assert.equal(r.flags.message, "note here");
+    assert.equal(r.flags.to, "opencode");
+    assert.equal(r.flags["no-log"], true);
+    assert.equal(r.flags.json, true);
   });
 });

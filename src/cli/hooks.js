@@ -6,6 +6,7 @@
  *  - PreCompact    → merge-save progress before context compaction
  *  - SessionEnd    → merge-save progress on clean exit
  *  - PostToolUse   → log git commits (Bash matcher)
+ *  - StopFailure   → handoff on API errors (rate_limit, overloaded, billing, …)
  *
  * OpenCode / Codex: see ROADMAP.md (same HTTP actions, different install targets).
  */
@@ -38,7 +39,9 @@ export function isOurHookCommand(command) {
     command.includes("agentstash-session-start") ||
     command.includes("agentstash/bin/session-start") ||
     command.includes("agentstash/bin/hook-runner") ||
-    /@agentstash\/mcp.*(session-start|checkpoint|log-commit)/.test(command)
+    /@agentstash\/mcp.*(session-start|checkpoint|log-commit|handoff)/.test(
+      command
+    )
   );
 }
 
@@ -55,7 +58,7 @@ export function installHookRunner() {
 /**
  * Agent Stash hook runner (installed by: npx @agentstash/mcp init)
  * Marker: ${HOOK_MARKER}
- * Usage: node hook-runner.mjs <session-start|checkpoint|log-commit> [args...]
+ * Usage: node hook-runner.mjs <session-start|checkpoint|log-commit|handoff> [args...]
  *
  * Important:
  * - Invokes the \`agentstash\` bin explicitly (not bare \`mcp\`) so npx never
@@ -106,7 +109,7 @@ const r = spawnSync(
 );
 
 if (r.stdout) process.stdout.write(r.stdout);
-// For checkpoint/log-commit, quiet success is fine; session-start needs stdout.
+// For checkpoint/log-commit/handoff, quiet success is fine; session-start needs stdout.
 if (r.status !== 0 && !r.stdout && cliArgs[0] === "session-start") {
   process.stdout.write(
     "## Agent Stash — prior session\\n\\n" +
@@ -183,6 +186,20 @@ export function ourHookSpecs(runner = hookRunnerPath()) {
             type: "command",
             command: hookCommand("log-commit", runner),
             timeout: 20,
+          },
+        ],
+      },
+    },
+    {
+      // Fires when a turn ends on an API error (Claude rate limit, overload, billing…).
+      // No matcher = all StopFailure error types. Output is ignored by Claude Code.
+      event: "StopFailure",
+      group: {
+        hooks: [
+          {
+            type: "command",
+            command: hookCommand("handoff", runner),
+            timeout: 25,
           },
         ],
       },
@@ -349,6 +366,7 @@ export function detectClaudeHooks(settingsPath = claudeSettingsPath()) {
       "PreCompact",
       "SessionEnd",
       "PostToolUse",
+      "StopFailure",
     ]) {
       events[event] = eventHasOurs(hooks[event]);
     }

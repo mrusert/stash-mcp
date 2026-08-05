@@ -10,18 +10,20 @@ import {
 } from "./session-brief.js";
 import { apiGet, apiPutText } from "./api-client.js";
 
-const VALID_REASONS = new Set([
+export const VALID_REASONS = new Set([
   "pre_compact",
   "session_end",
   "manual",
   "commit",
+  "handoff",
 ]);
 
 /**
  * @param {object|string|null} existing
  * @param {string} reason
+ * @param {{ message?: string, error_type?: string, error_message?: string, source?: string }} [extras]
  */
-export function mergeProgressSnapshot(existing, reason) {
+export function mergeProgressSnapshot(existing, reason, extras = {}) {
   const now = new Date().toISOString();
   let base = {};
   if (existing && typeof existing === "object") {
@@ -59,11 +61,21 @@ export function mergeProgressSnapshot(existing, reason) {
   trail.push({ reason, at: now });
   base.auto_checkpoints = trail;
 
+  if (reason === "handoff" || extras.message || extras.error_type) {
+    base.handoff_at = now;
+    if (extras.message) base.handoff_note = String(extras.message).slice(0, 2000);
+    if (extras.error_type) base.handoff_error_type = String(extras.error_type).slice(0, 120);
+    if (extras.error_message) {
+      base.handoff_error_message = String(extras.error_message).slice(0, 500);
+    }
+    if (extras.source) base.handoff_source = String(extras.source).slice(0, 80);
+  }
+
   return base;
 }
 
 /**
- * @param {{ reason: string, cwd?: string, project?: string, apiKey?: string, apiUrl?: string, stdinRaw?: string, fetchImpl?: typeof fetch }} opts
+ * @param {{ reason: string, cwd?: string, project?: string, apiKey?: string, apiUrl?: string, stdinRaw?: string, fetchImpl?: typeof fetch, message?: string, error_type?: string, error_message?: string, source?: string }} opts
  */
 export async function runCheckpoint(opts = {}) {
   const reason = VALID_REASONS.has(opts.reason) ? opts.reason : "manual";
@@ -108,7 +120,12 @@ export async function runCheckpoint(opts = {}) {
     existing = got.body;
   }
 
-  const snapshot = mergeProgressSnapshot(existing, reason);
+  const snapshot = mergeProgressSnapshot(existing, reason, {
+    message: opts.message,
+    error_type: opts.error_type,
+    error_message: opts.error_message,
+    source: opts.source,
+  });
   const put = await apiPutText({
     apiUrl,
     apiKey,
@@ -132,6 +149,9 @@ export async function runCheckpoint(opts = {}) {
     project,
     reason,
     snapshot,
+    cwd,
+    apiKey,
+    apiUrl,
     message: `checkpoint ok: ${reason} for ${project}`,
   };
 }
