@@ -18,7 +18,7 @@ npx @agentstash/mcp init --api-key sk_... --codex --force
 npx @agentstash/mcp init --api-key sk_... --all --force
 ```
 
-Or register a free key: `--register --agent-name my-laptop`
+Or register a free key: `--register --claude`
 
 Restart the tool after install. Check: `npx @agentstash/mcp doctor`
 

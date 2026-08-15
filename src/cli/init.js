@@ -105,7 +105,7 @@ export async function runInit(opts) {
     console.error(`No API key found.
 
   Pass --api-key sk_..., set AGENT_STASH_API_KEY, or run:
-    npx @agentstash/mcp init --register --agent-name my-laptop
+    npx @agentstash/mcp init --register --claude
 
   Or sign in at https://agentstash.ai and paste your key.`);
     process.exitCode = 1;

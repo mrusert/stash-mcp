@@ -128,7 +128,7 @@ handoff options:
 Examples:
   npx @agentstash/mcp init --api-key sk_... --claude --force
   npx @agentstash/mcp init --api-key sk_... --opencode --codex
-  npx @agentstash/mcp init --register --agent-name laptop --all
+  npx @agentstash/mcp init --register --all
   npx @agentstash/mcp doctor
   npx @agentstash/mcp handoff
   npx @agentstash/mcp handoff -m "mid-auth-refactor" --to opencode
